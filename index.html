@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TERMINAL_JOURNAL</title>
+    <style>
+        /* --- RETRO TERMINAL THEME --- */
+        :root {
+            --bg: #000000;
+            --text: #ffffff;
+            --font: 'Courier New', Courier, monospace;
+        }
+
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: var(--font);
+            margin: 0;
+            padding: 20px 20px 160px 20px; /* Extra bottom padding for sticky input */
+            line-height: 1.4;
+        }
+
+        /* --- INPUTS & BUTTONS --- */
+        input, textarea, button {
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--text);
+            font-family: var(--font);
+            border-radius: 0;
+            padding: 10px;
+            font-size: 16px; /* Prevents iOS zoom on focus */
+        }
+
+        button {
+            background: var(--text);
+            color: var(--bg);
+            font-weight: bold;
+            cursor: pointer;
+            text-transform: uppercase;
+        }
+
+        button:active {
+            background: var(--bg);
+            color: var(--text);
+        }
+
+        /* --- LAYOUT --- */
+        .header {
+            border-bottom: 2px solid var(--text);
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        section { margin-bottom: 30px; }
+        h2 { font-size: 14px; text-transform: uppercase; border-bottom: 1px dashed var(--text); padding-bottom: 5px; }
+
+        .goal-item { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+        .goal-item input[type="checkbox"] { width: 20px; height: 20px; }
+        .done { text-decoration: line-through; opacity: 0.5; }
+
+        .log-entry {
+            border: 1px solid var(--text);
+            padding: 10px;
+            margin-bottom: 15px;
+        }
+
+        .log-meta { font-size: 12px; margin-bottom: 5px; opacity: 0.7; }
+
+        /* --- STICKY FOOTER --- */
+        .footer {
+            position: fixed;
+            bottom: 0; left: 0; right: 0;
+            background: var(--bg);
+            border-top: 2px solid var(--text);
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .cat-row { display: flex; gap: 5px; overflow-x: auto; }
+        .cat-btn { font-size: 10px; padding: 5px; background: var(--bg); color: var(--text); border-color: #444; }
+        .cat-btn.active { border-color: var(--text); border-width: 2px; }
+
+        .input-row { display: flex; gap: 10px; }
+        textarea { flex: 1; height: 50px; resize: none; }
+
+        #datePicker { border: none; font-size: 12px; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <strong>SYS.JOURNAL_v1.0</strong>
+        <input type="date" id="datePicker">
+    </div>
+
+    <section>
+        <h2>// DAILY_GOALS</h2>
+        <div id="goalList"></div>
+        <div style="display:flex; gap:10px; margin-top:10px;">
+            <input type="text" id="goalInput" placeholder="NEW_TASK..." style="flex:1;">
+            <button onclick="addGoal()">+</button>
+        </div>
+    </section>
+
+    <section>
+        <h2>// ACTIVITY_LOG</h2>
+        <div id="logFeed"></div>
+    </section>
+
+    <div class="footer">
+        <div class="cat-row">
+            <button class="cat-btn active" onclick="setCat('WORK', this)">WORK</button>
+            <button class="cat-btn" onclick="setCat('LIFE', this)">LIFE</button>
+            <button class="cat-btn" onclick="setCat('HABITS', this)">HABITS</button>
+            <button class="cat-btn" onclick="setCat('MISC', this)">MISC</button>
+        </div>
+        <div class="input-row">
+            <textarea id="logInput" placeholder="WHAT_ARE_YOU_DOING?"></textarea>
+            <button onclick="addEntry()">LOG</button>
+        </div>
+    </div>
+
+    <script>
+        let currentCat = 'WORK';
+        let viewDate = new Date().toISOString().split('T')[0];
+
+        // Initialize
+        window.onload = () => {
+            document.getElementById('datePicker').value = viewDate;
+            refresh();
+        };
+
+        document.getElementById('datePicker').onchange = (e) => {
+            viewDate = e.target.value;
+            refresh();
+        };
+
+        function setCat(cat, btn) {
+            currentCat = cat;
+            document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        }
+
+        function getData() {
+            return JSON.parse(localStorage.getItem('retro_data')) || { goals: {}, logs: {} };
+        }
+
+        function saveData(data) {
+            localStorage.setItem('retro_data', JSON.stringify(data));
+        }
+
+        function addGoal() {
+            const val = document.getElementById('goalInput').value;
+            if (!val) return;
+            const data = getData();
+            if (!data.goals[viewDate]) data.goals[viewDate] = [];
+            data.goals[viewDate].push({ text: val, done: false });
+            saveData(data);
+            document.getElementById('goalInput').value = '';
+            refresh();
+        }
+
+        function toggleGoal(idx) {
+            const data = getData();
+            data.goals[viewDate][idx].done = !data.goals[viewDate][idx].done;
+            saveData(data);
+            refresh();
+        }
+
+        function addEntry() {
+            const val = document.getElementById('logInput').value;
+            if (!val) return;
+            const data = getData();
+            if (!data.logs[viewDate]) data.logs[viewDate] = [];
+
+            const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+            
+            // Auto-close previous entry time
+            if (data.logs[viewDate].length > 0) {
+                const last = data.logs[viewDate][data.logs[viewDate].length - 1];
+                if (!last.end) last.end = time;
+            }
+
+            data.logs[viewDate].push({ start: time, end: null, cat: currentCat, text: val });
+            saveData(data);
+            document.getElementById('logInput').value = '';
+            refresh();
+        }
+
+        function refresh() {
+            const data = getData();
+            
+            // Render Goals
+            const gDiv = document.getElementById('goalList');
+            gDiv.innerHTML = '';
+            (data.goals[viewDate] || []).forEach((g, i) => {
+                gDiv.innerHTML += `
+                    <div class="goal-item">
+                        <input type="checkbox" ${g.done ? 'checked' : ''} onchange="toggleGoal(${i})">
+                        <span class="${g.done ? 'done' : ''}">${g.text}</span>
+                    </div>`;
+            });
+
+            // Render Logs
+            const lDiv = document.getElementById('logFeed');
+            lDiv.innerHTML = '';
+            const logs = (data.logs[viewDate] || []).slice().reverse();
+            logs.forEach(l => {
+                lDiv.innerHTML += `
+                    <div class="log-entry">
+                        <div class="log-meta">[${l.start} - ${l.end || 'ACTIVE'}] :: ${l.cat}</div>
+                        <div>${l.text}</div>
+                    </div>`;
+            });
+        }
+    </script>
+</body>
+</html>
